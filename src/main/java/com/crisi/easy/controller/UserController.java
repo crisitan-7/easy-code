@@ -9,26 +9,31 @@ import java.util.List;
 @RestController
 @RequestMapping("/users")
 public class UserController {
+    private final UserRepository repo;
 
-    private final UserRepository userRepo;
-
-    public UserController(UserRepository userRepo) {
-        this.userRepo = userRepo;
+    public UserController(UserRepository repo) {
+        this.repo = repo;
     }
 
     @GetMapping
     public List<User> all() {
-        return userRepo.findAll();
+        return repo.findAll();
     }
 
     @GetMapping("/{id}")
     public User one(@PathVariable Long id) {
-        return userRepo.findById(id);
+        return repo.findById(id);
     }
 
     @PostMapping
     public String add(@RequestBody User user) {
-        userRepo.save(user);
+        repo.save(user);
         return "User added!";
+    }
+
+    @DeleteMapping("/{id}")
+    public String delete(@PathVariable Long id) {
+        repo.delete(id);
+        return "User deleted!";
     }
 }
