@@ -1,41 +1,31 @@
 ```mermaid
-flowchart TB
-  subgraph QueueingProcess
-    qStart([Start])
-    fetch[/Get Scan_execution list/]
-    hasNext{More items?}
-    next([Next item])
-    check{Queue free && under limit?}
-    enq[Enqueue item]
-    lockIns["Insert lock (scan_execution_lock)"]
-    lockOk{Lock OK?}
-    deq[Dequeue item]
-    doneIter([Iteration done])
-    selSast[/Select: agent=machineName, type=sast, deleted_at NULL/]
-    updSast[Update se.sast_in_queue = TRUE]
-    selSca[/Select: agent=machineName, type=sca, deleted_at NULL/]
-    updSca[Update se.sca_in_queue = TRUE]
-    qEnd([End])
+flowchart LR
+  %% --- QueueingProcess ---
+  Q0([QueueingProcess]) --> Q1[/Get Scan_execution list/]
+  Q1 --> Q2{More items?}
+  Q2 -- Yes --> Q3([Next item])
+  Q3 --> Q4{Queue free && under limit?}
+  Q4 -- No --> Q2
+  Q4 -- Yes --> Q5[Enqueue]
+  Q5 --> Q6[Insert into scan_execution_lock]
+  Q6 --> Q7{Insert OK?}
+  Q7 -- No --> Q8["Dequeue (rollback)"]
+  Q8 --> Q2
+  Q7 -- Yes --> Q2
+  Q2 -- No --> Q9([Post-iteration])
 
-    qStart --> fetch --> hasNext
-    hasNext -- Yes --> next --> check
-    check -- Yes --> enq --> lockIns --> lockOk
-    lockOk -- Yes --> hasNext
-    lockOk -- No --> deq --> hasNext
-    check -- No --> hasNext
-    hasNext -- No --> doneIter --> selSast --> updSast --> selSca --> updSca --> qEnd
-  end
+  %% Flags consolidation (SAST then SCA)
+  Q9 --> Q10[/Select by agent=machine, type=sast, del_at NULL/]
+  Q10 --> Q11[Update Scan_execution.sast_in_queue = TRUE]
+  Q11 --> Q12[/Select by agent=machine, type=sca, del_at NULL/]
+  Q12 --> Q13[Update Scan_execution.sca_in_queue = TRUE]
+  Q13 --> Q14([End])
 
-  subgraph Worker[SastProcess / ScaProcess]
-    wStart([Start])
-    wDeq[Dequeue from Queue]
-    wHas{Item?}
-    wWait["[Wait & retry]"]
-    wExec[Execute scan]
-    wClose[Update lock: set deleted_at]
-    wEnd([End])
-
-    wStart --> wDeq --> wHas
-    wHas -- No --> wWait --> wDeq
-    wHas -- Yes --> wExec --> wClose --> wDeq
-  end
+  %% --- Worker (SastProcess / ScaProcess) loop ---
+  W0([Worker Start]) --> W1[Dequeue]
+  W1 --> W2{Item?}
+  W2 -- No --> W3["[Wait & retry]"]
+  W3 --> W1
+  W2 -- Yes --> W4[Execute scan]
+  W4 --> W5[Update scan_execution_lock.deleted_at]
+  W5 --> W1
